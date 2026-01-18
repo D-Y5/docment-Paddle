@@ -5,6 +5,7 @@ import os
 
 import paddle
 from paddle_utils import *
+import paddle.nn.functional as F
 
 """
 DocAligner训练脚本
@@ -13,6 +14,8 @@ import argparse
 import sys
 from datetime import datetime
 from pathlib import Path
+import matplotlib.pyplot as plt
+#import numpy as np
 
 import numpy as np
 import yaml
@@ -37,12 +40,13 @@ class Trainer:
         #    # "cuda" if paddle.cuda.is_available() and config["use_cuda"] else "cpu"
         #     "gpu" if paddle.device.is_compiled_with_cuda() and config["use_cuda"] else "cpu"
         # )
-        # 修改后（Iluvatar GPU专用）
-        if config["use_cuda"] and paddle.is_compiled_with_custom_device('iluvatar_gpu'):
-            self.device = paddle.CustomPlace('iluvatar_gpu', 0)  # 显式指定GPU设备
+        if config["use_cuda"] and paddle.is_compiled_with_cuda():
+            self.device = paddle.CUDAPlace(0)  # 使用第一个GPU
+            paddle.device.set_device("gpu:0")
         else:
             self.device = paddle.CPUPlace()
-        paddle.device.set_device(self.device)
+            paddle.device.set_device("cpu")
+        #paddle.device.set_device(self.device)
         print(f"Using device: {self.device}")
         self.output_dir = Path(config["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -112,8 +116,8 @@ class Trainer:
             losses["total"].backward()
             if self.config["grad_clip"] > 0:
                 paddle.nn.utils.clip_grad_norm_(
-                    parameters=self.model.parameters(),
-                    max_norm=self.config["grad_clip"],
+                parameters=self.model.parameters(),
+                max_norm=self.config["grad_clip"],
                 )
             self.optimizer.step()
             total_loss += losses["total"].item()
@@ -159,6 +163,23 @@ class Trainer:
         total_samples = 0
         with paddle.no_grad():
             for batch in tqdm(self.val_loader, desc="Validating"):
+                # if batch_idx == 0:  # 只可视化第一个batch
+                #     pred_hm = output["heatmap"][0].cpu().numpy()  # [4, 64, 64]
+                #     target_hm = target["heatmap"][0].cpu().numpy()  # [4, 64, 64]
+                    
+                #     # 显示第0个角点
+                #     plt.figure(figsize=(12, 4))
+                #     plt.subplot(1, 3, 1)
+                #     plt.imshow(pred_hm[0], cmap='hot')
+                #     plt.title(f"Pred Heatmap - Corner 0 (max={pred_hm[0].max():.3f})")
+                #     plt.subplot(1, 3, 2)
+                #     plt.imshow(target_hm[0], cmap='hot')
+                #     plt.title("Target Heatmap - Corner 0")
+                #     plt.subplot(1, 3, 3)
+                #     plt.imshow(np.abs(pred_hm[0] - target_hm[0]), cmap='hot')
+                #     plt.title("Abs Diff")
+                #     plt.savefig("/home/aistudio/paddle_project/debug_heatmap.png")
+                #     print("热力图已保存到 debug_heatmap.png")
                 images = batch["image"].to(self.device)
                 target_heatmap = batch["heatmap"].to(self.device)
                 target_corners = batch["corners"].to(self.device)
@@ -170,7 +191,9 @@ class Trainer:
                     ).to(self.device)
                     target["offset"] = target_offset
                 losses = self.criterion(output, target)
-                pred_corners = self._extract_corners_from_heatmap(output["heatmap"])
+                #pred_corners = self._extract_corners_from_heatmap(output["heatmap"])
+
+                pred_corners = self._extract_corners_from_heatmap(F.sigmoid(output["heatmap"]))
                 pred_corners = pred_corners.to(self.device)
                 iou = compute_iou(pred_corners, target_corners)
                 nme = compute_nme(pred_corners, target_corners)
@@ -201,25 +224,49 @@ class Trainer:
                 offset[b, i * 2 + 1, y_heatmap, x_heatmap] = offset_y
         return offset
 
+    # def _extract_corners_from_heatmap(self, heatmap):
+    #     """从热力图中提取角点坐标"""
+    #     batch_size = heatmap.shape[0]
+    #     num_corners = 4
+    #     height = heatmap.shape[2]
+    #     width = heatmap.shape[3]
+    #     corners = paddle.zeros(batch_size, num_corners, 2)
+    #     for b in range(batch_size):
+    #         for i in range(num_corners):
+    #             h = heatmap[b, i]
+    #             max_val = paddle.max(h)
+    #             if max_val > 0.1:
+    #                 y, x = paddle.where(h == max_val)
+    #                 y, x = y[0].item(), x[0].item()
+    #                 corners[b, i, 0] = x / (width - 1)
+    #                 corners[b, i, 1] = y / (height - 1)
+    #             else:
+    #                 corners[b, i] = paddle.tensor([0.5, 0.5])
+    #     return corners
+
     def _extract_corners_from_heatmap(self, heatmap):
-        """从热力图中提取角点坐标"""
+        """从热力图中提取角点坐标 - 最终修复版"""
         batch_size = heatmap.shape[0]
         num_corners = 4
         height = heatmap.shape[2]
         width = heatmap.shape[3]
-        corners = paddle.zeros(batch_size, num_corners, 2)
+        corners = paddle.zeros([batch_size, num_corners, 2])
+        
         for b in range(batch_size):
             for i in range(num_corners):
-                h = heatmap[b, i]
-                max_val = h._max()
-                if max_val > 0.1:
-                    y, x = paddle.where(h == max_val)
-                    y, x = y[0].item(), x[0].item()
-                    corners[b, i, 0] = x / (width - 1)
-                    corners[b, i, 1] = y / (height - 1)
-                else:
-                    corners[b, i] = paddle.tensor([0.5, 0.5])
+                h = heatmap[b, i]  # [H, W]
+                
+                # 找到最大值索引
+                flat_idx = paddle.argmax(h.reshape([-1]))
+                y = flat_idx // width
+                x = flat_idx % width
+                
+                # 转换为归一化坐标
+                corners[b, i, 0] = x.astype('float32') / (width - 1)
+                corners[b, i, 1] = y.astype('float32') / (height - 1)
+        
         return corners
+
 
     def save_checkpoint(self, is_best=False):
         """保存检查点"""
@@ -231,14 +278,18 @@ class Trainer:
             "best_iou": self.best_iou,
             "config": self.config,
         }
-        checkpoint_path = self.output_dir / "checkpoint_latest.pth"
+        # checkpoint_path = self.output_dir / "checkpoint_latest.pth"
+        # paddle.save(obj=checkpoint, path=checkpoint_path)
+        checkpoint_path = str(self.output_dir / "checkpoint_latest.pth")
         paddle.save(obj=checkpoint, path=checkpoint_path)
         if is_best:
-            best_path = self.output_dir / "checkpoint_best.pth"
+            #best_path = self.output_dir / "checkpoint_best.pth"
+            best_path = str(self.output_dir / "checkpoint_best.pth")
             paddle.save(obj=checkpoint, path=best_path)
             print(f"Best model saved with IoU: {self.best_iou:.4f}")
         if self.current_epoch % self.config["save_interval"] == 0:
-            epoch_path = self.output_dir / f"checkpoint_epoch_{self.current_epoch}.pth"
+            #epoch_path = self.output_dir / f"checkpoint_epoch_{self.current_epoch}.pth"
+            epoch_path = str(self.output_dir / f"checkpoint_epoch_{self.current_epoch}.pth")
             paddle.save(obj=checkpoint, path=epoch_path)
 
     def load_checkpoint(self, checkpoint_path):
