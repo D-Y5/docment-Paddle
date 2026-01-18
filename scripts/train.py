@@ -32,7 +32,8 @@ class Trainer:
     def __init__(self, config):
         self.config = config
         self.device = paddle.device(
-            "cuda" if paddle.cuda.is_available() and config["use_cuda"] else "cpu"
+           # "cuda" if paddle.cuda.is_available() and config["use_cuda"] else "cpu"
+            "gpu" if paddle.device.is_compiled_with_cuda() and config["use_cuda"] else "cpu"
         )
         print(f"Using device: {self.device}")
         self.output_dir = Path(config["output_dir"])
