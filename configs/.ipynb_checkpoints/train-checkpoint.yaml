@@ -1,7 +1,7 @@
 # DocAligner 训练配置文件
 
 # 数据配置
-data_root: "work/smartdoc15_train_samples"
+data_root: "/home/aistudio/work/smartdoc15_train_samples"
 
 # 模型配置
 model_type: "base"  # "base" or "offset"
@@ -27,4 +27,4 @@ log_interval: 10
 save_interval: 10
 
 # 输出配置
-output_dir: "work/outputs/docaligner_20240115"
+output_dir: "/home/aistudio/work/outputs/docaligner_20240115"

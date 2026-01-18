@@ -31,10 +31,12 @@ class Trainer:
 
     def __init__(self, config):
         self.config = config
-        self.device = paddle.device(
-           # "cuda" if paddle.cuda.is_available() and config["use_cuda"] else "cpu"
-            "gpu" if paddle.device.is_compiled_with_cuda() and config["use_cuda"] else "cpu"
-        )
+        # self.device = paddle.device(
+        #    # "cuda" if paddle.cuda.is_available() and config["use_cuda"] else "cpu"
+        #     "gpu" if paddle.device.is_compiled_with_cuda() and config["use_cuda"] else "cpu"
+        # )
+        self.device = "gpu" if paddle.device.is_compiled_with_cuda() and config["use_cuda"] else "cpu"
+        paddle.device.set_device(self.device)
         print(f"Using device: {self.device}")
         self.output_dir = Path(config["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -89,7 +91,7 @@ class Trainer:
             images = batch["image"].to(self.device)
             target_heatmap = batch["heatmap"].to(self.device)
             target_corners = batch["corners"].to(self.device)
-            self.optimizer.zero_grad()
+            self.optimizer.clear_grad()
             output = self.model(images)
             target = {"heatmap": target_heatmap}
             if "offset" in output:

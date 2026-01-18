@@ -95,13 +95,13 @@ class SmartDocDataset(paddle.io.Dataset):
         corners_normalized[:, 0] /= self.input_size[1]
         corners_normalized[:, 1] /= self.input_size[0]
         result = {
-            "image": paddle.from_numpy(image_normalized).float(),
-            "corners": paddle.from_numpy(corners_normalized).float(),
+            "image": paddle.to_tensor(image_normalized).float(),
+            "corners": paddle.to_tensor(corners_normalized).float(),
             "original_size": (original_width, original_height),
             "image_id": sample["id"],
         }
         if heatmap is not None:
-            result["heatmap"] = paddle.from_numpy(heatmap).float()
+            result["heatmap"] = paddle.to_tensor(heatmap).float()
         return result
 
     def _resize_image_and_corners(

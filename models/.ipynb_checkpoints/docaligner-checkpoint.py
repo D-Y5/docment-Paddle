@@ -168,7 +168,7 @@ class DocAligner(paddle.nn.Layer):
 
     def _initialize_weights(self):
         """初始化权重"""
-        for m in self.modules():
+        for m in self.sublayers():
             if isinstance(m, paddle.nn.Conv2d):
                 paddle.nn.init.kaiming_normal_(
                     m.weight, mode="fan_out", nonlinearity="relu"
