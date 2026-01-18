@@ -24,6 +24,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 from models.dataset import create_dataloaders
 from models.docaligner import create_docaligner_model
 from models.loss import DocAlignerLoss, compute_iou, compute_nme
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="paddle.nn.layer.norm")
 
 
 class Trainer:
@@ -35,7 +37,11 @@ class Trainer:
         #    # "cuda" if paddle.cuda.is_available() and config["use_cuda"] else "cpu"
         #     "gpu" if paddle.device.is_compiled_with_cuda() and config["use_cuda"] else "cpu"
         # )
-        self.device = "gpu" if paddle.device.is_compiled_with_cuda() and config["use_cuda"] else "cpu"
+        # 修改后（Iluvatar GPU专用）
+        if config["use_cuda"] and paddle.is_compiled_with_custom_device('iluvatar_gpu'):
+            self.device = paddle.CustomPlace('iluvatar_gpu', 0)  # 显式指定GPU设备
+        else:
+            self.device = paddle.CPUPlace()
         paddle.device.set_device(self.device)
         print(f"Using device: {self.device}")
         self.output_dir = Path(config["output_dir"])
@@ -70,6 +76,7 @@ class Trainer:
             batch_size=config["batch_size"],
             num_workers=config["num_workers"],
             input_size=tuple(config["input_size"]),
+            target_size=config.get("target_size", config["input_size"]),  # 从配置读取
             use_heatmap=True,
         )
         #self.writer = torch.utils.tensorboard.SummaryWriter(self.output_dir / "logs")
@@ -99,6 +106,8 @@ class Trainer:
                     target_corners, target_heatmap.shape
                 ).to(self.device)
                 target["offset"] = target_offset
+            #print(f"Model output shape: {output['heatmap'].shape}")
+            #print(f"Target shape: {target['heatmap'].shape}")
             losses = self.criterion(output, target)
             losses["total"].backward()
             if self.config["grad_clip"] > 0:
@@ -114,7 +123,7 @@ class Trainer:
             pbar.set_postfix(
                 {
                     "loss": f"{losses['total'].item():.4f}",
-                    "lr": f"{self.optimizer.param_groups[0]['lr']:.6f}",
+                    "lr": f"{self.optimizer.get_lr():.6f}",
                 }
             )
             if batch_idx % self.config["log_interval"] == 0:
@@ -130,7 +139,7 @@ class Trainer:
                         "train/offset_loss", losses["offset"].item(), global_step
                     )
                 self.writer.add_scalar(
-                    "train/lr", self.optimizer.param_groups[0]["lr"], global_step
+                    "train/lr", self.optimizer.get_lr(), global_step
                 )
         avg_loss = total_loss / len(self.train_loader)
         avg_heatmap_loss = total_heatmap_loss / len(self.train_loader)
@@ -261,7 +270,7 @@ class Trainer:
             print(f"  Val Loss: {val_metrics['loss']:.4f}")
             print(f"  Val IoU: {val_metrics['iou']:.4f}")
             print(f"  Val NME: {val_metrics['nme']:.4f}")
-            print(f"  Learning Rate: {self.optimizer.param_groups[0]['lr']:.6f}")
+            print(f"  Learning Rate: {self.optimizer.get_lr():.6f}")
             is_best = val_metrics["iou"] > self.best_iou
             if is_best:
                 self.best_iou = val_metrics["iou"]

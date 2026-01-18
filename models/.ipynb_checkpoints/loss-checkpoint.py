@@ -1,4 +1,5 @@
 import paddle
+import paddle.nn.functional as F
 
 """
 损失函数：用于训练DocAligner模型
@@ -34,14 +35,15 @@ class FocalLoss(paddle.nn.Layer):
         Returns:
             loss: Focal loss
         """
+        pred = F.sigmoid(pred)  # 核心修复：约束值域
         pos_mask = target > 0
         neg_mask = target <= 0
         loss = (
             -self.alpha
             * (target - pred).abs() ** self.beta
             * (
-                pos_mask.float() * paddle.log(pred.clamp(min=1e-07))
-                + neg_mask.float() * paddle.log((1 - pred).clamp(min=1e-07))
+                pos_mask.float() * paddle.log(pred.clip(min=1e-07))
+                + neg_mask.float() * paddle.log((1 - pred).clip(min=1e-07))
             )
         )
         if mask is not None:

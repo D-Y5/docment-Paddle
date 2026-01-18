@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 from PIL import Image
+import paddle.nn.functional as F
 
 
 class SmartDocDataset(paddle.io.Dataset):
@@ -24,6 +25,7 @@ class SmartDocDataset(paddle.io.Dataset):
         split: str = "train",
         transform=None,
         input_size: Tuple[int, int] = (512, 512),
+        target_size: Optional[Tuple[int, int]] = None,  # 添加参数
         use_heatmap: bool = True,
         heatmap_sigma: float = 5.0,
     ):
@@ -43,6 +45,7 @@ class SmartDocDataset(paddle.io.Dataset):
         self.use_heatmap = use_heatmap
         self.heatmap_sigma = heatmap_sigma
         self.samples = self._load_samples()
+        self.target_size = target_size if target_size else input_size  # 默认与input_size相同
 
     def _load_samples(self) -> List[Dict]:
         """加载样本列表"""
@@ -144,7 +147,7 @@ class SmartDocDataset(paddle.io.Dataset):
         Returns:
             heatmap: 热力图 (num_keypoints, H, W)
         """
-        h, w = self.input_size
+        h, w = self.target_size  # 使用 target_size 而非 input_size
         heatmap = np.zeros((num_keypoints, h, w), dtype=np.float32)
         for i, (x, y) in enumerate(corners):
             x = int(np.clip(x, 0, w - 1))
@@ -183,6 +186,7 @@ def create_dataloaders(
     batch_size: int = 8,
     num_workers: int = 4,
     input_size: Tuple[int, int] = (512, 512),
+    target_size: Optional[Tuple[int, int]] = None,  # 添加
     use_heatmap: bool = True,
 ) -> Tuple[paddle.io.DataLoader, paddle.io.DataLoader]:
     """
@@ -200,7 +204,7 @@ def create_dataloaders(
         val_loader: 验证数据加载器
     """
     train_dataset = SmartDocDataset(
-        root_dir=root_dir, split="train", input_size=input_size, use_heatmap=use_heatmap
+        root_dir=root_dir, split="train", input_size=input_size,target_size=target_size,use_heatmap=use_heatmap
     )
     val_dataset = SmartDocDataset(
         root_dir=root_dir, split="val", input_size=input_size, use_heatmap=use_heatmap
