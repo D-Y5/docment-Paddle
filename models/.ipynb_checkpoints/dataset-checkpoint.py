@@ -207,7 +207,7 @@ def create_dataloaders(
         root_dir=root_dir, split="train", input_size=input_size,target_size=target_size,use_heatmap=use_heatmap
     )
     val_dataset = SmartDocDataset(
-        root_dir=root_dir, split="val", input_size=input_size, use_heatmap=use_heatmap
+        root_dir=root_dir, split="val", input_size=input_size, target_size=target_size, use_heatmap=use_heatmap
     )
     train_loader = paddle.io.DataLoader(
         dataset=train_dataset,
