@@ -1,0 +1,23 @@
+{
+  "image_path": "test_document_original.jpg",
+  "corners": [
+    [
+      0.1,
+      0.1
+    ],
+    [
+      0.9,
+      0.1
+    ],
+    [
+      0.9,
+      0.9
+    ],
+    [
+      0.1,
+      0.9
+    ]
+  ],
+  "image_width": 800,
+  "image_height": 600
+}

@@ -1,0 +1,30 @@
+# DocAligner 训练配置文件
+
+# 数据配置
+data_root: "work/smartdoc15_train_samples"
+
+# 模型配置
+model_type: "base"  # "base" or "offset"
+pretrained: false
+input_size: [512, 512]  # [H, W]
+
+# 训练配置
+batch_size: 8
+epochs: 100
+learning_rate: 0.001
+weight_decay: 0.0001
+grad_clip: 10.0
+
+# 损失函数配置
+heatmap_weight: 1.0
+offset_weight: 0.1
+use_focal: true
+
+# 训练器配置
+use_cuda: true
+num_workers: 0
+log_interval: 10
+save_interval: 10
+
+# 输出配置
+output_dir: "work/outputs/docaligner_20240115"
