@@ -236,7 +236,7 @@ def compute_iou(
             iou_values.append(iou_value)
         except:
             iou_values.append(0.0)
-    return paddle.to_tensor(iou_values, place=pred_corners.deplacevice)
+    return paddle.to_tensor(iou_values, place=pred_corners.place)
 
 
 def polygon_area(corners: paddle.Tensor) -> paddle.Tensor:

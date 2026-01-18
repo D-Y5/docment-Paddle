@@ -1,17 +1,0 @@
-nohup: ignoring input
-/opt/conda/envs/python35-paddle120-env/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:717: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
-  warnings.warn(warning_message)
-I0118 17:35:35.028371 1010689 init.cc:238] ENV [CUSTOM_DEVICE_ROOT]=/opt/conda/envs/python35-paddle120-env/lib/python3.10/site-packages/paddle_custom_device
-I0118 17:35:35.028461 1010689 init.cc:146] Try loading custom device libs from: [/opt/conda/envs/python35-paddle120-env/lib/python3.10/site-packages/paddle_custom_device]
-I0118 17:35:35.158713 1010689 custom_device_load.cc:51] Succeed in loading custom runtime in lib: /opt/conda/envs/python35-paddle120-env/lib/python3.10/site-packages/paddle_custom_device/libpaddle-iluvatar-gpu.so
-I0118 17:35:35.158779 1010689 custom_device_load.cc:58] Skipped lib [/opt/conda/envs/python35-paddle120-env/lib/python3.10/site-packages/paddle_custom_device/libpaddle-iluvatar-gpu.so]: no custom engine Plugin symbol in this lib.
-I0118 17:35:35.168256 1010689 custom_kernel.cc:68] Succeed in loading 883 custom kernel(s) from loaded lib(s), will be used like native ones.
-I0118 17:35:35.168699 1010689 init.cc:158] Finished in LoadCustomDevice with libs_path: [/opt/conda/envs/python35-paddle120-env/lib/python3.10/site-packages/paddle_custom_device]
-I0118 17:35:35.168766 1010689 init.cc:244] CustomDevice: iluvatar_gpu, visible devices count: 1
-Using device: Place(iluvatar_gpu:0)
-Loaded 19911 train samples
-Loaded 4978 val samples
-Starting training for 5 epochs...
-Training samples: 19911
-Validation samples: 4978
-Epoch 0:   0%|                                                                                            | 0/2489 [00:00<?, ?it/s]
