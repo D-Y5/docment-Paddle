@@ -159,7 +159,7 @@ class SmartDocDataset(paddle.io.Dataset):
         for i, (x, y) in enumerate(scaled_corners):
             x = int(np.clip(x, 0, w - 1))
             y = int(np.clip(y, 0, h - 1))
-            heatmap[i] = self._generate_single_heatmap((x, y), (h, w), sigma=1.5)  # 减小sigma值
+            heatmap[i] = self._generate_single_heatmap((x, y), (h, w), sigma=3.0)  # 增大sigma值
         return heatmap
 
     def _generate_single_heatmap(
