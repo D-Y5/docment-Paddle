@@ -27,7 +27,7 @@ class SmartDocDataset(paddle.io.Dataset):
         input_size: Tuple[int, int] = (512, 512),
         target_size: Optional[Tuple[int, int]] = None,  # 添加参数
         use_heatmap: bool = True,
-        heatmap_sigma: float = 5.0,
+        heatmap_sigma: float = 10.0,           #5.0
     ):
         """
         Args:

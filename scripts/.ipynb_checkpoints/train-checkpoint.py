@@ -15,11 +15,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt
-#import numpy as np
+import paddle.nn.functional as F
 
 import numpy as np
 import yaml
 from tqdm import tqdm
+
 
 from visualdl import LogWriter #解决torch.utils.tensorboard.SummaryWriter
 
@@ -163,23 +164,7 @@ class Trainer:
         total_samples = 0
         with paddle.no_grad():
             for batch in tqdm(self.val_loader, desc="Validating"):
-                # if batch_idx == 0:  # 只可视化第一个batch
-                #     pred_hm = output["heatmap"][0].cpu().numpy()  # [4, 64, 64]
-                #     target_hm = target["heatmap"][0].cpu().numpy()  # [4, 64, 64]
-                    
-                #     # 显示第0个角点
-                #     plt.figure(figsize=(12, 4))
-                #     plt.subplot(1, 3, 1)
-                #     plt.imshow(pred_hm[0], cmap='hot')
-                #     plt.title(f"Pred Heatmap - Corner 0 (max={pred_hm[0].max():.3f})")
-                #     plt.subplot(1, 3, 2)
-                #     plt.imshow(target_hm[0], cmap='hot')
-                #     plt.title("Target Heatmap - Corner 0")
-                #     plt.subplot(1, 3, 3)
-                #     plt.imshow(np.abs(pred_hm[0] - target_hm[0]), cmap='hot')
-                #     plt.title("Abs Diff")
-                #     plt.savefig("/home/aistudio/paddle_project/debug_heatmap.png")
-                #     print("热力图已保存到 debug_heatmap.png")
+                
                 images = batch["image"].to(self.device)
                 target_heatmap = batch["heatmap"].to(self.device)
                 target_corners = batch["corners"].to(self.device)

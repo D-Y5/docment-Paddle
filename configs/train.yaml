@@ -11,15 +11,15 @@ input_size: [512, 512]  # [H, W]
 
 # 训练配置
 batch_size: 8
-epochs: 1        #100
-learning_rate: 0.001
+epochs: 50       #1A00
+learning_rate: 0.0001
 weight_decay: 0.0001
 grad_clip: 10.0
 
 # 损失函数配置
-heatmap_weight: 1.0
+heatmap_weight: 10.0
 offset_weight: 0.1
-use_focal: true
+use_focal: false
 
 # 训练器配置
 use_cuda: true
