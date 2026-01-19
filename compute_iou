@@ -1,0 +1,48 @@
+def compute_iou(
+    pred_corners: paddle.Tensor, target_corners: paddle.Tensor
+) -> paddle.Tensor:
+    """
+    计算IoU (Intersection over Union)
+    添加角点排序一致性保证
+
+    Args:
+        pred_corners: 预测角点 (B, 4, 2)
+        target_corners: 目标角点 (B, 4, 2)
+
+    Returns:
+        iou: IoU值 (B,)
+    """
+    def sort_corners_clockwise(corners):
+        # 计算中心点
+        center = corners.mean(axis=0)
+        # 计算角度
+        angles = np.arctan2(corners[:,1]-center[1], corners[:,0]-center[0])
+        # 按角度排序
+        sorted_idx = np.argsort(angles)
+        return corners[sorted_idx]
+
+    batch_size = pred_corners.shape[0]
+    iou_values = []
+    for i in range(batch_size):
+        try:
+            from shapely.geometry import Polygon
+            
+            # 确保角点顺时针排序
+            pred_sorted = sort_corners_clockwise(pred_corners[i].numpy())
+            target_sorted = sort_corners_clockwise(target_corners[i].numpy())
+            
+            pred_poly = Polygon(pred_sorted)
+            target_poly = Polygon(target_sorted)
+            
+            if not pred_poly.is_valid or not target_poly.is_valid:
+                iou_values.append(0.0)
+                continue
+                
+            intersection = pred_poly.intersection(target_poly).area
+            union = pred_poly.union(target_poly).area
+            
+            iou_values.append(intersection / (union + 1e-06))
+        except:
+            iou_values.append(0.0)
+    
+    return paddle.to_tensor(iou_values, dtype=paddle.float32)
