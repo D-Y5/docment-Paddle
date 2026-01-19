@@ -147,10 +147,10 @@ class SmartDocDataset(paddle.io.Dataset):
         Returns:
             heatmap: 热力图 (num_keypoints, H, W)
         """
-        h, w = 128, 128  # 匹配模型输出分辨率
-        # 重新缩放角点坐标到128x128范围
-        scale_x = 128 / self.target_size[1]
-        scale_y = 128 / self.target_size[0]
+        h, w = 64, 64  # 匹配模型输出分辨率
+        # 重新缩放角点坐标到64x64范围
+        scale_x = 64 / self.target_size[1]
+        scale_y = 64 / self.target_size[0]
         scaled_corners = corners.copy()
         scaled_corners[:, 0] *= scale_x
         scaled_corners[:, 1] *= scale_y
@@ -159,7 +159,7 @@ class SmartDocDataset(paddle.io.Dataset):
         for i, (x, y) in enumerate(scaled_corners):
             x = int(np.clip(x, 0, w - 1))
             y = int(np.clip(y, 0, h - 1))
-            heatmap[i] = self._generate_single_heatmap((x, y), (h, w), sigma=2.0)  # 减小sigma值
+            heatmap[i] = self._generate_single_heatmap((x, y), (h, w), sigma=1.5)  # 减小sigma值
         return heatmap
 
     def _generate_single_heatmap(
