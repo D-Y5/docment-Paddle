@@ -136,14 +136,14 @@ class SampleGenerator:
                     all_files = os.listdir(doc_path)
                     print(f"All files in {doc_path}: {len(all_files)} files")
                     
-                    # 过滤出jpg文件
-                    frames = [f for f in all_files if f.endswith(".jpg")]
-                    print(f"Found {len(frames)} .jpg frames in {doc_path}")
+                    # 过滤出jpg和jpeg文件
+                    frames = [f for f in all_files if f.endswith(".jpg") or f.endswith(".jpeg")]
+                    print(f"Found {len(frames)} .jpg/.jpeg frames in {doc_path}")
                     
                     # 过滤出其他可能的图像文件格式
-                    other_images = [f for f in all_files if f.endswith(".png") or f.endswith(".jpeg")]
+                    other_images = [f for f in all_files if f.endswith(".png")]
                     if other_images:
-                        print(f"Found {len(other_images)} non-jpg image files: {other_images[:5]}...")
+                        print(f"Found {len(other_images)} .png image files: {other_images[:5]}...")
                     
                     frames.sort()
                     
