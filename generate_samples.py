@@ -38,6 +38,17 @@ class SampleGenerator:
     
     def process_frame(self, frame_path, doc_type, doc_id, frame_id):
         """处理单帧图像"""
+        # 生成输出文件名
+        image_name = f"{doc_type}{doc_id}_{frame_id}.jpg"
+        image_output_path = os.path.join(self.output_root, "images", image_name)
+        
+        annotation_name = f"{doc_type}{doc_id}_{frame_id}.json"
+        annotation_output_path = os.path.join(self.output_root, "annotations", annotation_name)
+        
+        # 检查文件是否已存在（断点续传）
+        if os.path.exists(image_output_path) and os.path.exists(annotation_output_path):
+            return "skipped"
+        
         # 读取图像
         image = cv2.imread(frame_path)
         if image is None:
@@ -64,13 +75,9 @@ class SampleGenerator:
             heatmaps.append(heatmap)
         
         # 保存图像
-        image_name = f"{doc_type}{doc_id}_{frame_id}.jpg"
-        image_output_path = os.path.join(self.output_root, "images", image_name)
         cv2.imwrite(image_output_path, resized_image)
         
         # 保存标注（只保存四角点坐标，不保存热力图数据）
-        annotation_name = f"{doc_type}{doc_id}_{frame_id}.json"
-        annotation_output_path = os.path.join(self.output_root, "annotations", annotation_name)
         annotation = {
             "image_path": image_name,
             "corners": corners
@@ -146,13 +153,19 @@ class SampleGenerator:
                     
                     frames.sort()
                     
+                    skipped_count = 0
                     for frame_id, frame_name in enumerate(tqdm(frames, desc=f"Processing {doc_type}")):
                         frame_path = os.path.join(doc_path, frame_name)
                         result = self.process_frame(frame_path, doc_type_name, doc_id, frame_id)
-                        if result:
+                        if result == "skipped":
+                            skipped_count += 1
+                        elif result:
                             total_frames += 1
                         else:
                             print(f"Failed to process frame: {frame_path}")
+                    
+                    if skipped_count > 0:
+                        print(f"Skipped {skipped_count} existing files in {doc_type}")
                 except Exception as e:
                     print(f"Error processing {doc_path}: {e}")
                     import traceback
