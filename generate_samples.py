@@ -68,13 +68,12 @@ class SampleGenerator:
         image_output_path = os.path.join(self.output_root, "images", image_name)
         cv2.imwrite(image_output_path, resized_image)
         
-        # 保存标注
+        # 保存标注（只保存四角点坐标，不保存热力图数据）
         annotation_name = f"{doc_type}{doc_id}_{frame_id}.json"
         annotation_output_path = os.path.join(self.output_root, "annotations", annotation_name)
         annotation = {
             "image_path": image_name,
-            "corners": corners,
-            "heatmaps": [heatmap.tolist() for heatmap in heatmaps]
+            "corners": corners
         }
         
         with open(annotation_output_path, "w") as f:
