@@ -87,14 +87,20 @@ class SampleGenerator:
         # 遍历所有背景场景
         background_dirs = [d for d in os.listdir(self.data_root) if d.startswith("background")]
         
+        print(f"Found background directories: {background_dirs}")
+        
         total_frames = 0
         for background_dir in background_dirs:
             background_path = os.path.join(self.data_root, background_dir)
+            print(f"Processing background: {background_path}")
             
             # 遍历所有文档类型
             doc_types = os.listdir(background_path)
+            print(f"Found doc types: {doc_types}")
+            
             for doc_type in doc_types:
                 doc_path = os.path.join(background_path, doc_type)
+                print(f"Processing doc type: {doc_path}")
                 
                 # 提取文档类型和ID
                 if doc_type.startswith("datasheet"):
@@ -116,16 +122,42 @@ class SampleGenerator:
                     doc_type_name = "tax"
                     doc_id = doc_type.replace("tax", "")
                 else:
+                    print(f"Skipping unknown doc type: {doc_type}")
                     continue
                 
                 # 遍历所有帧图像
-                frames = [f for f in os.listdir(doc_path) if f.endswith(".jpg")]
-                frames.sort()
-                
-                for frame_id, frame_name in enumerate(tqdm(frames, desc=f"Processing {doc_type}")):
-                    frame_path = os.path.join(doc_path, frame_name)
-                    self.process_frame(frame_path, doc_type_name, doc_id, frame_id)
-                    total_frames += 1
+                try:
+                    # 检查doc_path是否为目录
+                    if not os.path.isdir(doc_path):
+                        print(f"Skipping non-directory: {doc_path}")
+                        continue
+                    
+                    # 列出目录中的所有文件
+                    all_files = os.listdir(doc_path)
+                    print(f"All files in {doc_path}: {len(all_files)} files")
+                    
+                    # 过滤出jpg文件
+                    frames = [f for f in all_files if f.endswith(".jpg")]
+                    print(f"Found {len(frames)} .jpg frames in {doc_path}")
+                    
+                    # 过滤出其他可能的图像文件格式
+                    other_images = [f for f in all_files if f.endswith(".png") or f.endswith(".jpeg")]
+                    if other_images:
+                        print(f"Found {len(other_images)} non-jpg image files: {other_images[:5]}...")
+                    
+                    frames.sort()
+                    
+                    for frame_id, frame_name in enumerate(tqdm(frames, desc=f"Processing {doc_type}")):
+                        frame_path = os.path.join(doc_path, frame_name)
+                        result = self.process_frame(frame_path, doc_type_name, doc_id, frame_id)
+                        if result:
+                            total_frames += 1
+                        else:
+                            print(f"Failed to process frame: {frame_path}")
+                except Exception as e:
+                    print(f"Error processing {doc_path}: {e}")
+                    import traceback
+                    traceback.print_exc()
         
         print(f"Total frames processed: {total_frames}")
 
@@ -137,6 +169,16 @@ def main():
     parser.add_argument("--image_size", type=int, nargs=2, default=[640, 640], help="Image size (width, height)")
     
     args = parser.parse_args()
+    
+    # 检查数据根目录是否存在
+    if not os.path.exists(args.data_root):
+        print(f"Error: Data root directory not found: {args.data_root}")
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Contents of current directory: {os.listdir('.')}")
+        return
+    
+    print(f"Using data root: {args.data_root}")
+    print(f"Using output root: {args.output_root}")
     
     generator = SampleGenerator(args.data_root, args.output_root, args.image_size)
     generator.generate_samples()
