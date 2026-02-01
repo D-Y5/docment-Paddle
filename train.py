@@ -138,8 +138,13 @@ def main():
     """主函数"""
     parser = argparse.ArgumentParser(description="Train document boundary detection model")
     parser.add_argument("--config", type=str, default="train.yaml", help="Path to config file")
+    parser.add_argument("--device", type=str, default="gpu", help="Device to use (gpu or cpu)")
     
     args = parser.parse_args()
+    
+    # 设置设备
+    paddle.set_device(args.device)
+    print(f"Using device: {args.device}")
     
     # 加载配置
     config = load_config(args.config)
@@ -184,12 +189,36 @@ def main():
     else:
         raise ValueError(f"Unsupported loss: {config['loss']['type']}")
     
+    # 加载验证集
+    val_dataset = DocDataset(
+        config["dataset"]["val_root"],
+        image_size=config["dataset"]["image_size"]
+    )
+    
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=config["dataset"]["batch_size"],
+        shuffle=False,
+        num_workers=config["dataset"]["num_workers"]
+    )
+    
     # 开始训练
     best_val_loss = float('inf')
     
     for epoch in range(config["train"]["epochs"]):
         # 训练
         train_loss = train_one_epoch(model, train_dataloader, optimizer, criterion, epoch, config)
+        
+        # 验证
+        if (epoch + 1) % config["eval"]["eval_interval"] == 0:
+            val_loss = validate(model, val_dataloader, criterion, config)
+            
+            # 保存最佳模型
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_model_path = os.path.join(config["train"]["save_dir"], "best_model.pdparams")
+                paddle.save(model.state_dict(), best_model_path)
+                print(f"Best model saved to {best_model_path} with val_loss: {val_loss:.4f}")
         
         # 保存模型
         if (epoch + 1) % config["train"]["save_interval"] == 0:
