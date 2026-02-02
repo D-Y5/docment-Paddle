@@ -6,8 +6,8 @@
 
 ```
 smartdoc15-ch1/
-├── frames/            # 视频帧数据
-├── models/            # 静态文档图像
+├── frames/            # 拍摄帧数据（动态场景）
+├── models/            # 标准文档图像（静态基准）
 ├── work/
 │   ├── train_samples/  # 训练样本
 │   ├── val_samples/    # 验证样本
@@ -19,6 +19,13 @@ smartdoc15-ch1/
 ├── align.py            # 文档对齐脚本
 └── evaluate.py         # 评测脚本
 ```
+
+## 项目流程
+
+1. **样本生成（任务1）**：frames（拍摄帧） + models（标准基准） + 官方标注 → 生成「帧图像+四边界坐标/文档掩膜」训练样本
+2. **模型训练（任务2）**：以 frames 帧为输入，以「models 锚定的四边界/掩膜」为标签，训练轻量分割+四边形拟合模型
+3. **透视矫正（任务3）**：模型从 frames（或用户上传帧）中预测四边界 → 以 models 对应文档的标准尺寸为目标 → 透视变换生成平展文档（JPEG/PDF）
+4. **官方评测（任务3）**：将模型预测的四边界 → 与「models 归一化后的标准坐标」比对 → 计算 IoU/NME，验证性能是否达标
 
 ## 环境配置
 
@@ -44,24 +51,15 @@ pip install -r requirements.txt
    - 数据集已下载，位于 `smartdoc15-ch1/` 目录下
    - 包含 `frames/`（视频帧）和 `models/`（静态图像）两个目录
 
-2. **生成训练样本（包含静态和动态数据）**
+2. **生成训练样本（配对frames和models）**
 
    ```bash
-   # 处理静态文档图像（models目录）
-   python generate_samples.py --data_root models --output_root work/train_samples
-
-   # 处理动态视频帧（frames目录）
-   python generate_samples.py --data_root frames --output_root work/train_samples
+   python generate_samples.py --frames_root frames --models_root models --output_root work/train_samples
    ```
 
-3. **生成验证样本（包含静态和动态数据）**
-
+3. **生成验证样本（配对frames和models）**
    ```bash
-   # 处理静态文档图像（models目录）
-   python generate_samples.py --data_root models --output_root work/val_samples
-
-   # 处理动态视频帧（frames目录）
-   python generate_samples.py --data_root frames --output_root work/val_samples
+   python generate_samples.py --frames_root frames --models_root models --output_root work/val_samples
    ```
 
 ## 模型训练
@@ -98,6 +96,7 @@ python align.py --model work/model_epoch_100.pdparams --input input_image.jpg --
 ```
 
 参数说明：
+
 - `--model`: 训练好的模型路径
 - `--input`: 输入图像路径
 - `--output`: 输出对齐后图像路径
