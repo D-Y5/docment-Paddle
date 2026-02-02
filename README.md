@@ -28,7 +28,15 @@ smartdoc15-ch1/
 - CPU: 2 Cores
 - RAM: 16GB
 - Disk: 100GB
-- PaddlePaddle: 2.4.0+  
+- PaddlePaddle: 2.4.0+
+
+### 安装依赖
+
+使用 requirements.txt 安装所需依赖：
+
+```bash
+pip install -r requirements.txt
+```
 
 ## 数据准备
 
@@ -36,20 +44,31 @@ smartdoc15-ch1/
    - 数据集已下载，位于 `smartdoc15-ch1/` 目录下
    - 包含 `frames/`（视频帧）和 `models/`（静态图像）两个目录
 
-2. **生成训练样本**
+2. **生成训练样本（包含静态和动态数据）**
+
    ```bash
-   python generate_samples.py --data_root work/frames --output_root work/train_samples --image_size 640 640
+   # 处理静态文档图像（models目录）
+   python generate_samples.py --data_root models --output_root work/train_samples
+
+   # 处理动态视频帧（frames目录）
+   python generate_samples.py --data_root frames --output_root work/train_samples
    ```
 
-3. **生成验证样本**
+3. **生成验证样本（包含静态和动态数据）**
+
    ```bash
-   python generate_samples.py --data_root work/frames --output_root work/val_samples --image_size 640 640
+   # 处理静态文档图像（models目录）
+   python generate_samples.py --data_root models --output_root work/val_samples
+
+   # 处理动态视频帧（frames目录）
+   python generate_samples.py --data_root frames --output_root work/val_samples
    ```
 
 ## 模型训练
 
 1. **修改配置文件**
    编辑 `train.yaml` 文件，设置训练参数：
+
    ```yaml
    # 数据集配置
    dataset:
@@ -57,7 +76,7 @@ smartdoc15-ch1/
      val_root: "work/val_samples"
      image_size: [640, 640]
      batch_size: 8
-   
+
    # 训练配置
    train:
      epochs: 100
@@ -75,7 +94,7 @@ smartdoc15-ch1/
 使用训练好的模型对齐文档：
 
 ```bash
-python align.py --model work/models/model_epoch_100.pdparams --input input_image.jpg --output output_aligned.jpg --format jpeg
+python align.py --model work/model_epoch_100.pdparams --input input_image.jpg --output output_aligned.jpg --format jpeg
 ```
 
 参数说明：
@@ -89,10 +108,11 @@ python align.py --model work/models/model_epoch_100.pdparams --input input_image
 评估模型性能：
 
 ```bash
-python evaluate.py --model work/models/model_epoch_100.pdparams --test_root work/val_samples
+python evaluate.py --model work/model_epoch_100.pdparams --test_root work/val_samples
 ```
 
 评测指标：
+
 - **文档区域 IoU**: 目标 ≥ 0.85
 - **四点 NME**: 目标 ≤ 0.03
 

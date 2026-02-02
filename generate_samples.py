@@ -90,22 +90,99 @@ class SampleGenerator:
     
     def generate_samples(self):
         """生成所有训练样本"""
-        # 遍历所有背景场景
-        background_dirs = [d for d in os.listdir(self.data_root) if d.startswith("background")]
+        # 遍历所有背景场景或直接处理文档类型
+        items = os.listdir(self.data_root)
         
-        print(f"Found background directories: {background_dirs}")
+        # 检查是否包含background目录
+        background_dirs = [d for d in items if d.startswith("background")]
         
         total_frames = 0
-        for background_dir in background_dirs:
-            background_path = os.path.join(self.data_root, background_dir)
-            print(f"Processing background: {background_path}")
+        
+        if background_dirs:
+            # 处理frames目录结构（包含background子目录）
+            print(f"Found background directories: {background_dirs}")
             
-            # 遍历所有文档类型
-            doc_types = os.listdir(background_path)
-            print(f"Found doc types: {doc_types}")
+            for background_dir in background_dirs:
+                background_path = os.path.join(self.data_root, background_dir)
+                print(f"Processing background: {background_path}")
+                
+                # 遍历所有文档类型
+                doc_types = os.listdir(background_path)
+                print(f"Found doc types: {doc_types}")
+                
+                for doc_type in doc_types:
+                    doc_path = os.path.join(background_path, doc_type)
+                    print(f"Processing doc type: {doc_path}")
+                    
+                    # 提取文档类型和ID
+                    if doc_type.startswith("datasheet"):
+                        doc_type_name = "datasheet"
+                        doc_id = doc_type.replace("datasheet", "")
+                    elif doc_type.startswith("letter"):
+                        doc_type_name = "letter"
+                        doc_id = doc_type.replace("letter", "")
+                    elif doc_type.startswith("magazine"):
+                        doc_type_name = "magazine"
+                        doc_id = doc_type.replace("magazine", "")
+                    elif doc_type.startswith("paper"):
+                        doc_type_name = "paper"
+                        doc_id = doc_type.replace("paper", "")
+                    elif doc_type.startswith("patent"):
+                        doc_type_name = "patent"
+                        doc_id = doc_type.replace("patent", "")
+                    elif doc_type.startswith("tax"):
+                        doc_type_name = "tax"
+                        doc_id = doc_type.replace("tax", "")
+                    else:
+                        print(f"Skipping unknown doc type: {doc_type}")
+                        continue
+                    
+                    # 遍历所有帧图像
+                    try:
+                        # 检查doc_path是否为目录
+                        if not os.path.isdir(doc_path):
+                            print(f"Skipping non-directory: {doc_path}")
+                            continue
+                        
+                        # 列出目录中的所有文件
+                        all_files = os.listdir(doc_path)
+                        print(f"All files in {doc_path}: {len(all_files)} files")
+                        
+                        # 过滤出jpg和jpeg文件
+                        frames = [f for f in all_files if f.endswith(".jpg") or f.endswith(".jpeg")]
+                        print(f"Found {len(frames)} .jpg/.jpeg frames in {doc_path}")
+                        
+                        # 过滤出其他可能的图像文件格式
+                        other_images = [f for f in all_files if f.endswith(".png")]
+                        if other_images:
+                            print(f"Found {len(other_images)} .png image files: {other_images[:5]}...")
+                        
+                        frames.sort()
+                        
+                        skipped_count = 0
+                        for frame_id, frame_name in enumerate(tqdm(frames, desc=f"Processing {doc_type}")):
+                            frame_path = os.path.join(doc_path, frame_name)
+                            result = self.process_frame(frame_path, doc_type_name, doc_id, frame_id)
+                            if result == "skipped":
+                                skipped_count += 1
+                            elif result:
+                                total_frames += 1
+                            else:
+                                print(f"Failed to process frame: {frame_path}")
+                        
+                        if skipped_count > 0:
+                            print(f"Skipped {skipped_count} existing files in {doc_type}")
+                    except Exception as e:
+                        print(f"Error processing {doc_path}: {e}")
+                        import traceback
+                        traceback.print_exc()
+        else:
+            # 处理models目录结构（直接包含文档类型目录）
+            print(f"Processing models directory structure: {self.data_root}")
+            print(f"Found doc types: {items}")
             
-            for doc_type in doc_types:
-                doc_path = os.path.join(background_path, doc_type)
+            for doc_type in items:
+                doc_path = os.path.join(self.data_root, doc_type)
                 print(f"Processing doc type: {doc_path}")
                 
                 # 提取文档类型和ID
@@ -131,7 +208,7 @@ class SampleGenerator:
                     print(f"Skipping unknown doc type: {doc_type}")
                     continue
                 
-                # 遍历所有帧图像
+                # 遍历所有图像文件
                 try:
                     # 检查doc_path是否为目录
                     if not os.path.isdir(doc_path):
@@ -142,27 +219,22 @@ class SampleGenerator:
                     all_files = os.listdir(doc_path)
                     print(f"All files in {doc_path}: {len(all_files)} files")
                     
-                    # 过滤出jpg和jpeg文件
-                    frames = [f for f in all_files if f.endswith(".jpg") or f.endswith(".jpeg")]
-                    print(f"Found {len(frames)} .jpg/.jpeg frames in {doc_path}")
+                    # 过滤出图像文件
+                    images = [f for f in all_files if f.endswith(".jpg") or f.endswith(".jpeg") or f.endswith(".png")]
+                    print(f"Found {len(images)} image files in {doc_path}")
                     
-                    # 过滤出其他可能的图像文件格式
-                    other_images = [f for f in all_files if f.endswith(".png")]
-                    if other_images:
-                        print(f"Found {len(other_images)} .png image files: {other_images[:5]}...")
-                    
-                    frames.sort()
+                    images.sort()
                     
                     skipped_count = 0
-                    for frame_id, frame_name in enumerate(tqdm(frames, desc=f"Processing {doc_type}")):
-                        frame_path = os.path.join(doc_path, frame_name)
-                        result = self.process_frame(frame_path, doc_type_name, doc_id, frame_id)
+                    for frame_id, image_name in enumerate(tqdm(images, desc=f"Processing {doc_type}")):
+                        image_path = os.path.join(doc_path, image_name)
+                        result = self.process_frame(image_path, doc_type_name, doc_id, frame_id)
                         if result == "skipped":
                             skipped_count += 1
                         elif result:
                             total_frames += 1
                         else:
-                            print(f"Failed to process frame: {frame_path}")
+                            print(f"Failed to process image: {image_path}")
                     
                     if skipped_count > 0:
                         print(f"Skipped {skipped_count} existing files in {doc_type}")
