@@ -34,6 +34,7 @@ class SampleGenerator:
             try:
                 metadata = pd.read_csv(metadata_path)
                 print(f"Loaded model metadata with {len(metadata)} entries")
+                print(f"Model metadata columns: {list(metadata.columns)}")
                 return metadata
             except Exception as e:
                 print(f"Error loading model metadata: {e}")
@@ -50,6 +51,7 @@ class SampleGenerator:
             try:
                 metadata = pd.read_csv(metadata_path)
                 print(f"Loaded frame metadata with {len(metadata)} entries")
+                print(f"Frame metadata columns: {list(metadata.columns)}")
                 return metadata
             except Exception as e:
                 print(f"Error loading frame metadata: {e}")
@@ -101,37 +103,66 @@ class SampleGenerator:
     
     def _get_corners_from_metadata(self, doc_id):
         """从元数据中获取四角点坐标"""
+        # 首先尝试从frames_metadata.csv中获取四角点
+        if self.frame_metadata is not None:
+            try:
+                # 从frame_metadata中查找对应文档的四角点
+                # 优先使用model_name列来匹配doc_id
+                if 'model_name' in self.frame_metadata.columns:
+                    frame_doc_metadata = self.frame_metadata[self.frame_metadata['model_name'] == doc_id]
+                    
+                    if len(frame_doc_metadata) > 0:
+                        # 从frame_metadata中提取四角点坐标
+                        try:
+                            # 检查是否有必要的坐标列
+                            required_columns = ['tl_x', 'tl_y', 'tr_x', 'tr_y', 'br_x', 'br_y', 'bl_x', 'bl_y']
+                            if all(col in self.frame_metadata.columns for col in required_columns):
+                                # 使用第一个匹配的条目
+                                metadata_entry = frame_doc_metadata.iloc[0]
+                                
+                                # 提取四角点坐标（左上、右上、右下、左下）
+                                corners = [
+                                    [int(metadata_entry['tl_x']), int(metadata_entry['tl_y'])],  # 左上角
+                                    [int(metadata_entry['tr_x']), int(metadata_entry['tr_y'])],  # 右上角
+                                    [int(metadata_entry['br_x']), int(metadata_entry['br_y'])],  # 右下角
+                                    [int(metadata_entry['bl_x']), int(metadata_entry['bl_y'])]   # 左下角
+                                ]
+                                
+                                print(f"Using corners from frame metadata for {doc_id}: {corners}")
+                                return corners
+                            else:
+                                print(f"Missing required coordinate columns in frame metadata")
+                        except Exception as e:
+                            print(f"Error extracting corners from frame metadata: {e}")
+                    else:
+                        print(f"No frame metadata found for model_name: {doc_id}")
+            except Exception as e:
+                print(f"Error processing frame metadata: {e}")
+        
+        # 如果frame_metadata不可用，尝试从model_metadata中获取
         if self.model_metadata is not None:
-            # 查找对应的文档元数据
-            doc_metadata = self.model_metadata[self.model_metadata['doc_id'] == doc_id]
-            if len(doc_metadata) > 0:
-                # 这里需要根据实际的元数据格式提取四角点
-                # 假设元数据中有left_top, right_top, right_bottom, left_bottom字段
-                # 实际应用中需要根据元数据的具体结构调整
-                try:
-                    # 示例：从元数据中提取四角点
-                    # 这里使用模拟数据，实际应用中需要从元数据中读取
-                    h, w = self.image_size
-                    margin = int(min(h, w) * 0.1)
-                    corners = [
-                        [margin, margin],  # 左上角
-                        [w - margin, margin],  # 右上角
-                        [w - margin, h - margin],  # 右下角
-                        [margin, h - margin]  # 左下角
-                    ]
-                    return corners
-                except Exception as e:
-                    print(f"Error extracting corners from metadata: {e}")
+            try:
+                # 从model_metadata中查找对应文档
+                if 'model_name' in self.model_metadata.columns:
+                    model_doc_metadata = self.model_metadata[self.model_metadata['model_name'] == doc_id]
+                    
+                    if len(model_doc_metadata) > 0:
+                        print(f"Found model metadata for {doc_id}, but using default corners")
+                        # model_metadata中没有四角点，使用默认值
+            except Exception as e:
+                print(f"Error processing model metadata: {e}")
         
         # 如果元数据不可用，使用默认四角点
         h, w = self.image_size
         margin = int(min(h, w) * 0.1)
-        return [
+        default_corners = [
             [margin, margin],  # 左上角
             [w - margin, margin],  # 右上角
             [w - margin, h - margin],  # 右下角
             [margin, h - margin]  # 左下角
         ]
+        print(f"Using default corners for {doc_id}: {default_corners}")
+        return default_corners
     
     def process_pair(self, frame_path, model_path, doc_id, frame_id):
         """处理配对的帧图像和模型图像"""
