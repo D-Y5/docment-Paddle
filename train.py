@@ -22,6 +22,7 @@ class DocDataset(Dataset):
         image_dir = os.path.join(data_root, "images")
         annotation_dir = os.path.join(data_root, "annotations")
         
+        import json
         for image_name in os.listdir(image_dir):
             if image_name.endswith(".jpg"):
                 image_path = os.path.join(image_dir, image_name)
@@ -29,8 +30,16 @@ class DocDataset(Dataset):
                 annotation_path = os.path.join(annotation_dir, annotation_name)
                 
                 if os.path.exists(annotation_path):
-                    self.image_paths.append(image_path)
-                    self.annotation_paths.append(annotation_path)
+                    # 验证JSON文件是否有效
+                    try:
+                        with open(annotation_path, "r") as f:
+                            annotation = json.load(f)
+                            if "corners" in annotation and len(annotation["corners"]) == 4:
+                                self.image_paths.append(image_path)
+                                self.annotation_paths.append(annotation_path)
+                    except Exception as e:
+                        print(f"Warning: Skipping invalid annotation file {annotation_path}: {e}")
+                        continue
     
     def __len__(self):
         return len(self.image_paths)
@@ -43,6 +52,9 @@ class DocDataset(Dataset):
         # 读取图像
         image_path = self.image_paths[idx]
         image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Failed to read image: {image_path}")
+        
         image = cv2.resize(image, self.image_size)
         image = image.astype(np.float32) / 255.0
         image = np.transpose(image, (2, 0, 1))  # HWC -> CHW
