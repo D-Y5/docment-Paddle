@@ -38,25 +38,22 @@ class DocAligner:
         # 转换为paddle张量
         input_tensor = paddle.to_tensor(preprocessed)
         
-        # 预测热力图
+        # 使用模型的predict_corners方法预测四角点
         with paddle.no_grad():
-            heatmaps = self.model(input_tensor)
+            corners = self.model.predict_corners(input_tensor)
         
-        # 从热力图中提取四角点
-        corners = []
-        heatmaps = heatmaps.numpy()[0]
+        # 归一化到原始图像尺寸
+        h, w = image.shape[:2]
+        input_h, input_w = self.input_size
         
-        for i in range(4):
-            heatmap = heatmaps[i]
-            # 找到最大值的位置
-            y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
-            # 归一化到原始图像尺寸
-            h, w = image.shape[:2]
-            x = int(x / heatmap.shape[1] * w)
-            y = int(y / heatmap.shape[0] * h)
-            corners.append([x, y])
+        normalized_corners = []
+        for corner in corners:
+            # 将模型输出的坐标映射到原始图像尺寸
+            x = int(corner[0] / input_w * w)
+            y = int(corner[1] / input_h * h)
+            normalized_corners.append([x, y])
         
-        return corners
+        return normalized_corners
     
     def sort_corners(self, corners):
         """排序四角点（左上、右上、右下、左下）"""

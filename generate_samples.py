@@ -18,6 +18,7 @@ class SampleGenerator:
         # 确保输出目录存在
         os.makedirs(os.path.join(output_root, "images"), exist_ok=True)
         os.makedirs(os.path.join(output_root, "annotations"), exist_ok=True)
+        os.makedirs(os.path.join(output_root, "masks"), exist_ok=True)
         
         # 加载元数据
         self.model_metadata = self._load_model_metadata()
@@ -82,24 +83,18 @@ class SampleGenerator:
         
         return model_images_map
     
-    def generate_heatmap(self, image_shape, corner, sigma=5):
-        """生成热力图"""
+    def generate_mask(self, image_shape, corners):
+        """生成分割掩码"""
         h, w = image_shape
-        heatmap = np.zeros((h, w), dtype=np.float32)
+        mask = np.zeros((h, w), dtype=np.uint8)
         
-        # 确保角点在图像范围内
-        x, y = int(corner[0]), int(corner[1])
-        x = max(0, min(w - 1, x))
-        y = max(0, min(h - 1, y))
+        # 将四角点转换为整数坐标
+        pts = np.array(corners, dtype=np.int32)
         
-        # 生成高斯热力图
-        for i in range(max(0, y - 3 * sigma), min(h, y + 3 * sigma)):
-            for j in range(max(0, x - 3 * sigma), min(w, x + 3 * sigma)):
-                distance = np.sqrt((i - y) ** 2 + (j - x) ** 2)
-                if distance < 3 * sigma:
-                    heatmap[i, j] = np.exp(-distance ** 2 / (2 * sigma ** 2))
+        # 填充多边形区域
+        cv2.fillPoly(mask, [pts], 255)
         
-        return heatmap
+        return mask
     
     def _get_corners_from_metadata(self, doc_id):
         """从元数据中获取四角点坐标"""
@@ -170,11 +165,14 @@ class SampleGenerator:
         image_name = f"{doc_id}_{frame_id}.jpg"
         image_output_path = os.path.join(self.output_root, "images", image_name)
         
+        mask_name = f"{doc_id}_{frame_id}.png"
+        mask_output_path = os.path.join(self.output_root, "masks", mask_name)
+        
         annotation_name = f"{doc_id}_{frame_id}.json"
         annotation_output_path = os.path.join(self.output_root, "annotations", annotation_name)
         
         # 检查文件是否已存在（断点续传）
-        if os.path.exists(image_output_path) and os.path.exists(annotation_output_path):
+        if os.path.exists(image_output_path) and os.path.exists(annotation_output_path) and os.path.exists(mask_output_path):
             return "skipped"
         
         # 读取拍摄帧图像
@@ -193,12 +191,19 @@ class SampleGenerator:
         # 从元数据或默认值获取四角点标注
         corners = self._get_corners_from_metadata(doc_id)
         
+        # 生成分割掩码
+        mask = self.generate_mask(self.image_size, corners)
+        
         # 保存拍摄帧图像
         cv2.imwrite(image_output_path, resized_frame)
+        
+        # 保存分割掩码
+        cv2.imwrite(mask_output_path, mask)
         
         # 保存标注
         annotation = {
             "image_path": image_name,
+            "mask_path": mask_name,
             "corners": corners,
             "model_path": os.path.basename(model_path),
             "doc_id": doc_id,

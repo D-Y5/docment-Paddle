@@ -17,29 +17,20 @@ class DocDataset(Dataset):
         
         # 加载所有图像路径
         self.image_paths = []
-        self.annotation_paths = []
+        self.mask_paths = []
         
         image_dir = os.path.join(data_root, "images")
-        annotation_dir = os.path.join(data_root, "annotations")
+        mask_dir = os.path.join(data_root, "masks")
         
-        import json
         for image_name in os.listdir(image_dir):
             if image_name.endswith(".jpg"):
                 image_path = os.path.join(image_dir, image_name)
-                annotation_name = image_name.replace(".jpg", ".json")
-                annotation_path = os.path.join(annotation_dir, annotation_name)
+                mask_name = image_name.replace(".jpg", ".png")
+                mask_path = os.path.join(mask_dir, mask_name)
                 
-                if os.path.exists(annotation_path):
-                    # 验证JSON文件是否有效
-                    try:
-                        with open(annotation_path, "r") as f:
-                            annotation = json.load(f)
-                            if "corners" in annotation and len(annotation["corners"]) == 4:
-                                self.image_paths.append(image_path)
-                                self.annotation_paths.append(annotation_path)
-                    except Exception as e:
-                        print(f"Warning: Skipping invalid annotation file {annotation_path}: {e}")
-                        continue
+                if os.path.exists(mask_path):
+                    self.image_paths.append(image_path)
+                    self.mask_paths.append(mask_path)
     
     def __len__(self):
         return len(self.image_paths)
@@ -47,7 +38,6 @@ class DocDataset(Dataset):
     def __getitem__(self, idx):
         """获取单个样本"""
         import cv2
-        import json
         
         # 读取图像
         image_path = self.image_paths[idx]
@@ -59,34 +49,17 @@ class DocDataset(Dataset):
         image = image.astype(np.float32) / 255.0
         image = np.transpose(image, (2, 0, 1))  # HWC -> CHW
         
-        # 读取标注
-        annotation_path = self.annotation_paths[idx]
-        with open(annotation_path, "r") as f:
-            annotation = json.load(f)
+        # 读取分割掩码
+        mask_path = self.mask_paths[idx]
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            raise ValueError(f"Failed to read mask: {mask_path}")
         
-        # 生成热力图标签
-        heatmaps = []
-        for corner in annotation["corners"]:
-            # 生成热力图
-            h, w = self.image_size
-            heatmap = np.zeros((h, w), dtype=np.float32)
-            x, y = int(corner[0]), int(corner[1])
-            x = max(0, min(w - 1, x))
-            y = max(0, min(h - 1, y))
-            
-            # 生成高斯热力图
-            sigma = 5
-            for i in range(max(0, y - 3 * sigma), min(h, y + 3 * sigma)):
-                for j in range(max(0, x - 3 * sigma), min(w, x + 3 * sigma)):
-                    distance = np.sqrt((i - y) ** 2 + (j - x) ** 2)
-                    if distance < 3 * sigma:
-                        heatmap[i, j] = np.exp(-distance ** 2 / (2 * sigma ** 2))
-            
-            heatmaps.append(heatmap)
+        mask = cv2.resize(mask, self.image_size)
+        mask = mask.astype(np.float32) / 255.0
+        mask = np.expand_dims(mask, axis=0)  # 添加通道维度
         
-        heatmaps = np.stack(heatmaps, axis=0)
-        
-        return image, heatmaps
+        return image, mask
 
 def load_config(config_path):
     """加载配置文件"""
@@ -99,16 +72,16 @@ def train_one_epoch(model, dataloader, optimizer, criterion, epoch, config):
     model.train()
     total_loss = 0
     
-    for batch_idx, (images, heatmaps) in enumerate(tqdm(dataloader)):
+    for batch_idx, (images, masks) in enumerate(tqdm(dataloader)):
         # 转换为paddle张量
         images = paddle.to_tensor(images)
-        heatmaps = paddle.to_tensor(heatmaps)
+        masks = paddle.to_tensor(masks)
         
         # 前向传播
         outputs = model(images)
         
         # 计算损失
-        loss = criterion(outputs, heatmaps)
+        loss = criterion(outputs, masks)
         total_loss += loss.item()
         
         # 反向传播
@@ -130,21 +103,30 @@ def validate(model, dataloader, criterion, config):
     total_loss = 0
     
     with paddle.no_grad():
-        for images, heatmaps in tqdm(dataloader):
+        for images, masks in tqdm(dataloader):
             # 转换为paddle张量
             images = paddle.to_tensor(images)
-            heatmaps = paddle.to_tensor(heatmaps)
+            masks = paddle.to_tensor(masks)
             
             # 前向传播
             outputs = model(images)
             
             # 计算损失
-            loss = criterion(outputs, heatmaps)
+            loss = criterion(outputs, masks)
             total_loss += loss.item()
     
     avg_loss = total_loss / len(dataloader)
     print(f"Validation Loss: {avg_loss:.4f}")
     return avg_loss
+
+def dice_loss(pred, target):
+    """Dice Loss"""
+    smooth = 1e-5
+    pred = paddle.nn.functional.sigmoid(pred)
+    intersection = (pred * target).sum()
+    union = pred.sum() + target.sum()
+    dice = (2. * intersection + smooth) / (union + smooth)
+    return 1. - dice
 
 def main():
     """主函数"""
@@ -196,7 +178,11 @@ def main():
         raise ValueError(f"Unsupported optimizer: {config['optimizer']['type']}")
     
     # 初始化损失函数
-    if config["loss"]["type"] == "MSELoss":
+    if config["loss"]["type"] == "BCEWithLogitsLoss":
+        criterion = paddle.nn.BCEWithLogitsLoss(reduction=config["loss"]["reduction"])
+    elif config["loss"]["type"] == "DiceLoss":
+        criterion = dice_loss
+    elif config["loss"]["type"] == "MSELoss":
         criterion = paddle.nn.MSELoss(reduction=config["loss"]["reduction"])
     else:
         raise ValueError(f"Unsupported loss: {config['loss']['type']}")

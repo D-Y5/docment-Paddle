@@ -1,11 +1,13 @@
 import paddle
 import paddle.nn as nn
 import paddle.nn.functional as F
+import numpy as np
+import cv2
 
 class LightweightUNet(nn.Layer):
-    """轻量级UNet结构用于文档四角点热力图回归"""
+    """轻量级UNet结构用于文档区域分割"""
     
-    def __init__(self, in_channels=3, out_channels=4, init_features=32):
+    def __init__(self, in_channels=3, out_channels=1, init_features=32):
         super(LightweightUNet, self).__init__()
         
         features = init_features
@@ -94,32 +96,77 @@ class DocDetector(nn.Layer):
     
     def predict_corners(self, x):
         """预测四角点坐标"""
-        heatmaps = self.forward(x)
-        corners = []
+        batch_size = x.shape[0]
+        all_corners = []
         
-        # 从每个热力图中提取峰值点
-        for i in range(4):
-            heatmap = heatmaps[:, i, :, :]
-            # 使用最大值池化找到峰值点
-            max_pool = F.max_pool2D(heatmap.unsqueeze(1), kernel_size=3, stride=1, padding=1)
-            peak_mask = paddle.equal(heatmap.unsqueeze(1), max_pool).cast('float32')
-            peak_heatmap = heatmap.unsqueeze(1) * peak_mask
+        # 获取分割结果
+        outputs = self.forward(x)
+        # 应用sigmoid激活函数
+        masks = F.sigmoid(outputs)
+        
+        for b in range(batch_size):
+            # 将掩码转换为numpy数组
+            mask = masks[b, 0].numpy()
+            # 阈值处理得到二值掩码
+            binary_mask = (mask > 0.5).astype(np.uint8) * 255
             
-            # 计算峰值点坐标
-            batch_size = x.shape[0]
-            for b in range(batch_size):
-                # 找到最大值的位置
-                max_val = paddle.max(peak_heatmap[b])
-                if max_val > 0:
-                    # 获取坐标
-                    coords = paddle.where(peak_heatmap[b] == max_val)
-                    y, x_coord = coords[1][0].item(), coords[2][0].item()
-                    # 归一化到输入图像尺寸
-                    y = y / heatmap.shape[1] * self.input_size[0]
-                    x_coord = x_coord / heatmap.shape[2] * self.input_size[1]
-                    corners.append([x_coord, y])
-                else:
-                    # 如果没有找到峰值点，返回默认值
-                    corners.append([0, 0])
+            # 提取四角点
+            corners = self._extract_corners(binary_mask)
+            all_corners.extend(corners)
         
+        return all_corners
+    
+    def _extract_corners(self, binary_mask):
+        """从二值掩码中提取四角点"""
+        # 查找轮廓
+        contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if not contours:
+            # 如果没有找到轮廓，返回默认四角点
+            h, w = binary_mask.shape
+            margin = int(min(h, w) * 0.1)
+            return [[margin, margin], [w - margin, margin], [w - margin, h - margin], [margin, h - margin]]
+        
+        # 找到最大的轮廓
+        largest_contour = max(contours, key=cv2.contourArea)
+        
+        # 近似多边形
+        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+        approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+        
+        # 如果近似结果是四边形，直接使用
+        if len(approx) == 4:
+            corners = [list(pt[0]) for pt in approx]
+            # 排序四角点（左上、右上、右下、左下）
+            corners = self._sort_corners(corners)
+            return corners
+        
+        # 否则使用最小外接矩形
+        rect = cv2.minAreaRect(largest_contour)
+        box = cv2.boxPoints(rect)
+        corners = [list(pt) for pt in box]
+        # 排序四角点
+        corners = self._sort_corners(corners)
         return corners
+    
+    def _sort_corners(self, corners):
+        """排序四角点为左上、右上、右下、左下"""
+        # 计算中心点
+        center = np.mean(corners, axis=0)
+        
+        # 按角度排序
+        sorted_corners = []
+        for corner in corners:
+            angle = np.arctan2(corner[1] - center[1], corner[0] - center[0])
+            sorted_corners.append((corner, angle))
+        
+        sorted_corners.sort(key=lambda x: x[1])
+        corners = [list(corner[0]) for corner in sorted_corners]
+        
+        # 调整顺序为左上、右上、右下、左下
+        # 找到最左上角的点
+        top_left_idx = np.argmin([corner[0] + corner[1] for corner in corners])
+        # 重新排列
+        sorted_corners = corners[top_left_idx:] + corners[:top_left_idx]
+        
+        return sorted_corners
