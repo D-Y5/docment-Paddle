@@ -7,16 +7,20 @@ import argparse
 from tqdm import tqdm
 
 class SampleGenerator:
-    """训练样本生成器 - 只使用frames数据"""
+    """训练样本和验证集生成器"""
 
-    def __init__(self, frames_root, output_root, image_size=(640, 640)):
+    def __init__(self, frames_root, output_root, image_size=(640, 640), val_ratio=0.2):
         self.frames_root = frames_root
         self.output_root = output_root
         self.image_size = image_size
+        self.val_ratio = val_ratio
 
-        os.makedirs(os.path.join(output_root, "images"), exist_ok=True)
-        os.makedirs(os.path.join(output_root, "annotations"), exist_ok=True)
-        os.makedirs(os.path.join(output_root, "masks"), exist_ok=True)
+        os.makedirs(os.path.join(output_root, "train", "images"), exist_ok=True)
+        os.makedirs(os.path.join(output_root, "train", "annotations"), exist_ok=True)
+        os.makedirs(os.path.join(output_root, "train", "masks"), exist_ok=True)
+        os.makedirs(os.path.join(output_root, "val", "images"), exist_ok=True)
+        os.makedirs(os.path.join(output_root, "val", "annotations"), exist_ok=True)
+        os.makedirs(os.path.join(output_root, "val", "masks"), exist_ok=True)
 
         self.frame_metadata = self._load_frame_metadata()
 
@@ -43,92 +47,6 @@ class SampleGenerator:
         pts = np.array(corners, dtype=np.int32)
         cv2.fillPoly(mask, [pts], 255)
         return mask
-
-    def generate_samples(self):
-        """生成所有训练样本"""
-        total_frames = 0
-
-        background_dirs = [d for d in os.listdir(self.frames_root) if d.startswith("background")]
-        print(f"Found background directories: {background_dirs}")
-
-        for background_dir in background_dirs:
-            background_path = os.path.join(self.frames_root, background_dir)
-            print(f"Processing background: {background_path}")
-
-            doc_types = [d for d in os.listdir(background_path) if os.path.isdir(os.path.join(background_path, d))]
-            print(f"Found doc types: {doc_types}")
-
-            for doc_type in doc_types:
-                doc_path = os.path.join(background_path, doc_type)
-                print(f"Processing doc type: {doc_path}")
-
-                if not os.path.isdir(doc_path):
-                    continue
-
-                all_files = os.listdir(doc_path)
-                frames = [f for f in all_files if f.lower().endswith((".jpg", ".jpeg"))]
-                print(f"Found {len(frames)} frames in {doc_path}")
-
-                if len(frames) == 0:
-                    continue
-
-                frames.sort()
-
-                skipped_count = 0
-                for frame_id, frame_name in enumerate(tqdm(frames, desc=f"Processing {doc_type}")):
-                    frame_path = os.path.join(doc_path, frame_name)
-                    result = self._process_frame(frame_path, background_dir, doc_type, frame_id)
-                    if result == "skipped":
-                        skipped_count += 1
-                    elif result:
-                        total_frames += 1
-
-                if skipped_count > 0:
-                    print(f"Skipped {skipped_count} existing files in {doc_type}")
-
-        print(f"Total frames processed: {total_frames}")
-        print(f"Metadata used: {self.frame_metadata is not None}")
-
-    def _process_frame(self, frame_path, bg_name, doc_id, frame_index):
-        """处理单个帧图像"""
-        image_name = os.path.basename(frame_path)
-        output_image_name = f"{bg_name}_{doc_id}_{frame_index:04d}.jpg"
-        image_output_path = os.path.join(self.output_root, "images", output_image_name)
-
-        mask_name = output_image_name.replace(".jpg", ".png")
-        mask_output_path = os.path.join(self.output_root, "masks", mask_name)
-
-        annotation_name = output_image_name.replace(".jpg", ".json")
-        annotation_output_path = os.path.join(self.output_root, "annotations", annotation_name)
-
-        if os.path.exists(image_output_path) and os.path.exists(annotation_output_path) and os.path.exists(mask_output_path):
-            return "skipped"
-
-        frame_image = cv2.imread(frame_path)
-        if frame_image is None:
-            return None
-
-        resized_frame = cv2.resize(frame_image, self.image_size)
-
-        corners = self._get_corners_from_metadata(bg_name, doc_id, frame_index)
-        mask = self.generate_mask(self.image_size, corners)
-
-        cv2.imwrite(image_output_path, resized_frame)
-        cv2.imwrite(mask_output_path, mask)
-
-        annotation = {
-            "image_path": output_image_name,
-            "mask_path": mask_name,
-            "corners": corners,
-            "bg_name": bg_name,
-            "doc_id": doc_id,
-            "frame_index": frame_index
-        }
-
-        with open(annotation_output_path, "w") as f:
-            json.dump(annotation, f)
-
-        return image_output_path
 
     def _get_corners_from_metadata(self, bg_name, doc_id, frame_index):
         """从元数据中获取四角点坐标"""
@@ -167,11 +85,118 @@ class SampleGenerator:
         ]
         return default_corners
 
+    def _process_frame(self, frame_path, bg_name, doc_id, frame_index, split="train"):
+        """处理单个帧图像"""
+        image_name = os.path.basename(frame_path)
+        output_image_name = f"{bg_name}_{doc_id}_{frame_index:04d}.jpg"
+        image_output_path = os.path.join(self.output_root, split, "images", output_image_name)
+
+        mask_name = output_image_name.replace(".jpg", ".png")
+        mask_output_path = os.path.join(self.output_root, split, "masks", mask_name)
+
+        annotation_name = output_image_name.replace(".jpg", ".json")
+        annotation_output_path = os.path.join(self.output_root, split, "annotations", annotation_name)
+
+        if os.path.exists(image_output_path) and os.path.exists(annotation_output_path) and os.path.exists(mask_output_path):
+            return "skipped"
+
+        frame_image = cv2.imread(frame_path)
+        if frame_image is None:
+            return None
+
+        resized_frame = cv2.resize(frame_image, self.image_size)
+
+        corners = self._get_corners_from_metadata(bg_name, doc_id, frame_index)
+        mask = self.generate_mask(self.image_size, corners)
+
+        cv2.imwrite(image_output_path, resized_frame)
+        cv2.imwrite(mask_output_path, mask)
+
+        annotation = {
+            "image_path": output_image_name,
+            "mask_path": mask_name,
+            "corners": corners,
+            "bg_name": bg_name,
+            "doc_id": doc_id,
+            "frame_index": frame_index
+        }
+
+        with open(annotation_output_path, "w") as f:
+            json.dump(annotation, f)
+
+        return image_output_path
+
+    def generate_samples(self):
+        """生成训练集和验证集"""
+        total_train = 0
+        total_val = 0
+
+        background_dirs = [d for d in os.listdir(self.frames_root) if d.startswith("background")]
+        print(f"Found background directories: {background_dirs}")
+
+        for background_dir in background_dirs:
+            background_path = os.path.join(self.frames_root, background_dir)
+            print(f"Processing background: {background_path}")
+
+            doc_types = [d for d in os.listdir(background_path) if os.path.isdir(os.path.join(background_path, d))]
+            print(f"Found doc types: {doc_types}")
+
+            for doc_type in doc_types:
+                doc_path = os.path.join(background_path, doc_type)
+                print(f"Processing doc type: {doc_path}")
+
+                if not os.path.isdir(doc_path):
+                    continue
+
+                all_files = os.listdir(doc_path)
+                frames = [f for f in all_files if f.lower().endswith((".jpg", ".jpeg"))]
+                print(f"Found {len(frames)} frames in {doc_path}")
+
+                if len(frames) == 0:
+                    continue
+
+                frames.sort()
+
+                val_count = int(len(frames) * self.val_ratio)
+                train_count = len(frames) - val_count
+
+                train_frames = frames[:train_count]
+                val_frames = frames[train_count:]
+
+                skipped_train = 0
+                for frame_id, frame_name in enumerate(tqdm(train_frames, desc=f"Train {doc_type}")):
+                    frame_path = os.path.join(doc_path, frame_name)
+                    result = self._process_frame(frame_path, background_dir, doc_type, frame_id, "train")
+                    if result == "skipped":
+                        skipped_train += 1
+                    elif result:
+                        total_train += 1
+
+                if skipped_train > 0:
+                    print(f"Skipped {skipped_train} existing train files in {doc_type}")
+
+                skipped_val = 0
+                for frame_id, frame_name in enumerate(tqdm(val_frames, desc=f"Val {doc_type}")):
+                    frame_path = os.path.join(doc_path, frame_name)
+                    result = self._process_frame(frame_path, background_dir, doc_type, frame_id, "val")
+                    if result == "skipped":
+                        skipped_val += 1
+                    elif result:
+                        total_val += 1
+
+                if skipped_val > 0:
+                    print(f"Skipped {skipped_val} existing val files in {doc_type}")
+
+        print(f"Total train samples: {total_train}")
+        print(f"Total val samples: {total_val}")
+        print(f"Metadata used: {self.frame_metadata is not None}")
+
 def main():
-    parser = argparse.ArgumentParser(description="Generate training samples from frames")
+    parser = argparse.ArgumentParser(description="Generate train and validation samples from frames")
     parser.add_argument("--frames_root", type=str, default="frames", help="Path to frames directory")
-    parser.add_argument("--output_root", type=str, default="work/train_samples", help="Path to output directory")
+    parser.add_argument("--output_root", type=str, default="work", help="Path to output directory")
     parser.add_argument("--image_size", type=int, nargs=2, default=[640, 640], help="Image size (width, height)")
+    parser.add_argument("--val_ratio", type=float, default=0.2, help="Validation set ratio")
 
     args = parser.parse_args()
 
@@ -181,8 +206,9 @@ def main():
 
     print(f"Using frames root: {args.frames_root}")
     print(f"Using output root: {args.output_root}")
+    print(f"Validation ratio: {args.val_ratio}")
 
-    generator = SampleGenerator(args.frames_root, args.output_root, args.image_size)
+    generator = SampleGenerator(args.frames_root, args.output_root, args.image_size, args.val_ratio)
     generator.generate_samples()
 
 if __name__ == "__main__":

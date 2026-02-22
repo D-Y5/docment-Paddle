@@ -2,8 +2,8 @@
 
 # 数据集配置
 dataset:
-  train_root: "work/train_samples"
-  val_root: "work/val_samples"
+  train_root: "work/train"
+  val_root: "work/val"
   image_size: [640, 640]
   batch_size: 8
   num_workers: 2
