@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import argparse
 from tqdm import tqdm
+import re
 
 class SampleGenerator:
     """训练样本和验证集生成器"""
@@ -23,6 +24,7 @@ class SampleGenerator:
         os.makedirs(os.path.join(output_root, "val", "masks"), exist_ok=True)
 
         self.frame_metadata = self._load_frame_metadata()
+        self._build_metadata_index()
 
     def _load_frame_metadata(self):
         """加载帧元数据"""
@@ -40,6 +42,21 @@ class SampleGenerator:
             print(f"Warning: Frame metadata not found at: {metadata_path}")
             return None
 
+    def _build_metadata_index(self):
+        """构建元数据索引以快速查找"""
+        self.metadata_index = {}
+        if self.frame_metadata is not None:
+            for idx, row in self.frame_metadata.iterrows():
+                key = (row.get('bg_name', ''), row.get('model_name', ''), row.get('frame_index', 1))
+                self.metadata_index[key] = row
+
+    def _extract_frame_number(self, filename):
+        """从文件名中提取帧号"""
+        match = re.search(r'frame_(\d+)', filename)
+        if match:
+            return int(match.group(1))
+        return 1
+
     def generate_mask(self, image_shape, corners):
         """生成分割掩码"""
         h, w = image_shape
@@ -48,8 +65,43 @@ class SampleGenerator:
         cv2.fillPoly(mask, [pts], 255)
         return mask
 
-    def _get_corners_from_metadata(self, bg_name, doc_id, frame_index):
+    def _scale_corners(self, corners, original_size, target_size):
+        """将坐标从原始尺寸缩放到目标尺寸"""
+        orig_h, orig_w = original_size
+        target_h, target_w = target_size
+
+        scale_x = target_w / orig_w
+        scale_y = target_h / orig_h
+
+        scaled_corners = []
+        for x, y in corners:
+            scaled_corners.append([int(x * scale_x), int(y * scale_y)])
+
+        return scaled_corners
+
+    def _get_corners_from_metadata(self, bg_name, doc_id, frame_number, original_size=None):
         """从元数据中获取四角点坐标"""
+        key = (bg_name, doc_id, frame_number)
+
+        if key in self.metadata_index:
+            row = self.metadata_index[key]
+            try:
+                required_columns = ['tl_x', 'tl_y', 'tr_x', 'tr_y', 'br_x', 'br_y', 'bl_x', 'bl_y']
+                if all(col in row.index for col in required_columns):
+                    corners = [
+                        [float(row['tl_x']), float(row['tl_y'])],
+                        [float(row['tr_x']), float(row['tr_y'])],
+                        [float(row['br_x']), float(row['br_y'])],
+                        [float(row['bl_x']), float(row['bl_y'])]
+                    ]
+
+                    if original_size is not None:
+                        corners = self._scale_corners(corners, original_size, self.image_size)
+
+                    return corners
+            except Exception as e:
+                print(f"Error extracting corners: {e}")
+
         if self.frame_metadata is not None:
             try:
                 if 'model_name' in self.frame_metadata.columns and 'bg_name' in self.frame_metadata.columns:
@@ -57,20 +109,21 @@ class SampleGenerator:
                     frame_doc_metadata = self.frame_metadata[mask]
 
                     if len(frame_doc_metadata) > 0:
-                        frame_doc_metadata = frame_doc_metadata.sort_values('frame_index')
-                        if frame_index < len(frame_doc_metadata):
-                            metadata_entry = frame_doc_metadata.iloc[frame_index]
-                        else:
-                            metadata_entry = frame_doc_metadata.iloc[0]
+                        closest_idx = (frame_doc_metadata['frame_index'] - frame_number).abs().idxmin()
+                        row = self.frame_metadata.loc[closest_idx]
 
                         required_columns = ['tl_x', 'tl_y', 'tr_x', 'tr_y', 'br_x', 'br_y', 'bl_x', 'bl_y']
-                        if all(col in self.frame_metadata.columns for col in required_columns):
+                        if all(col in row.index for col in required_columns):
                             corners = [
-                                [int(metadata_entry['tl_x']), int(metadata_entry['tl_y'])],
-                                [int(metadata_entry['tr_x']), int(metadata_entry['tr_y'])],
-                                [int(metadata_entry['br_x']), int(metadata_entry['br_y'])],
-                                [int(metadata_entry['bl_x']), int(metadata_entry['bl_y'])]
+                                [float(row['tl_x']), float(row['tl_y'])],
+                                [float(row['tr_x']), float(row['tr_y'])],
+                                [float(row['br_x']), float(row['br_y'])],
+                                [float(row['bl_x']), float(row['bl_y'])]
                             ]
+
+                            if original_size is not None:
+                                corners = self._scale_corners(corners, original_size, self.image_size)
+
                             return corners
             except Exception as e:
                 print(f"Error extracting corners from metadata: {e}")
@@ -85,10 +138,10 @@ class SampleGenerator:
         ]
         return default_corners
 
-    def _process_frame(self, frame_path, bg_name, doc_id, frame_index, split="train"):
+    def _process_frame(self, frame_path, bg_name, doc_id, frame_number, split="train"):
         """处理单个帧图像"""
         image_name = os.path.basename(frame_path)
-        output_image_name = f"{bg_name}_{doc_id}_{frame_index:04d}.jpg"
+        output_image_name = f"{bg_name}_{doc_id}_{frame_number:04d}.jpg"
         image_output_path = os.path.join(self.output_root, split, "images", output_image_name)
 
         mask_name = output_image_name.replace(".jpg", ".png")
@@ -104,9 +157,10 @@ class SampleGenerator:
         if frame_image is None:
             return None
 
+        original_size = (frame_image.shape[0], frame_image.shape[1])
         resized_frame = cv2.resize(frame_image, self.image_size)
 
-        corners = self._get_corners_from_metadata(bg_name, doc_id, frame_index)
+        corners = self._get_corners_from_metadata(bg_name, doc_id, frame_number, original_size)
         mask = self.generate_mask(self.image_size, corners)
 
         cv2.imwrite(image_output_path, resized_frame)
@@ -116,9 +170,11 @@ class SampleGenerator:
             "image_path": output_image_name,
             "mask_path": mask_name,
             "corners": corners,
+            "original_size": original_size,
+            "target_size": self.image_size,
             "bg_name": bg_name,
             "doc_id": doc_id,
-            "frame_index": frame_index
+            "frame_number": frame_number
         }
 
         with open(annotation_output_path, "w") as f:
@@ -164,9 +220,10 @@ class SampleGenerator:
                 val_frames = frames[train_count:]
 
                 skipped_train = 0
-                for frame_id, frame_name in enumerate(tqdm(train_frames, desc=f"Train {doc_type}")):
+                for frame_name in tqdm(train_frames, desc=f"Train {doc_type}"):
                     frame_path = os.path.join(doc_path, frame_name)
-                    result = self._process_frame(frame_path, background_dir, doc_type, frame_id, "train")
+                    frame_number = self._extract_frame_number(frame_name)
+                    result = self._process_frame(frame_path, background_dir, doc_type, frame_number, "train")
                     if result == "skipped":
                         skipped_train += 1
                     elif result:
@@ -176,9 +233,10 @@ class SampleGenerator:
                     print(f"Skipped {skipped_train} existing train files in {doc_type}")
 
                 skipped_val = 0
-                for frame_id, frame_name in enumerate(tqdm(val_frames, desc=f"Val {doc_type}")):
+                for frame_name in tqdm(val_frames, desc=f"Val {doc_type}"):
                     frame_path = os.path.join(doc_path, frame_name)
-                    result = self._process_frame(frame_path, background_dir, doc_type, frame_id, "val")
+                    frame_number = self._extract_frame_number(frame_name)
+                    result = self._process_frame(frame_path, background_dir, doc_type, frame_number, "val")
                     if result == "skipped":
                         skipped_val += 1
                     elif result:
